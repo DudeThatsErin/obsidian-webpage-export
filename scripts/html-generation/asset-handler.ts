@@ -1,16 +1,16 @@
-import graphViewJS from "assets/graph-view.txt.js";
-import graphWASMJS from "assets/graph-wasm.txt.js";
-import renderWorkerJS from "assets/graph-render-worker.txt.js";
-import graphWASM from "assets/graph-wasm.wasm";
-import websiteJS from "assets/website.txt.js";
-import webpageStyles from "assets/plugin-styles.txt.css";
-import deferredJS from "assets/deferred.txt.js";
-import deferredCSS from "assets/deferred.txt.css";
-import themeLoadJS from "assets/theme-load.txt.js";
-
-import tinyColorJS from "assets/tinycolor.txt.js";
-import pixiJS from "assets/pixi.txt.js";
-import minisearchJS from "assets/minisearch.txt.js";
+// Import assets using require
+const graphViewJS = require("assets/graph-view.txt.js");
+const graphWASMJS = require("assets/graph-wasm.txt.js");
+const renderWorkerJS = require("assets/graph-render-worker.txt.js");
+const graphWASM = require("assets/graph-wasm.wasm");
+const websiteJS = require("assets/website.txt.js");
+const webpageStyles = require("assets/plugin-styles.txt.css");
+const deferredJS = require("assets/deferred.txt.js");
+const deferredCSS = require("assets/deferred.txt.css");
+const themeLoadJS = require("assets/theme-load.txt.js");
+const tinyColorJS = require("assets/tinycolor.txt.js");
+const pixiJS = require("assets/pixi.txt.js");
+const minisearchJS = require("assets/minisearch.txt.js");
 
 import { Path } from "scripts/utils/path.js";
 import { Asset, AssetType, InlinePolicy, LoadMethod, Mutability } from "./assets/asset.js";

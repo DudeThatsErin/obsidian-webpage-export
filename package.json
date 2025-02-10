@@ -12,7 +12,7 @@
   "author": "Nathan George",
   "license": "GPL-3.0",
   "devDependencies": {
-    "@types/node": "^16.11.6",
+    "@types/node": "^16.18.126",
     "@types/rss": "^0.0.32",
     "@typescript-eslint/eslint-plugin": "^7.8.0",
     "@typescript-eslint/parser": "^7.8.0",
@@ -21,7 +21,7 @@
     "esbuild": "0.14.47",
     "eslint": "^8.56.0",
     "obsidian": "^1.4.11",
-    "tslib": "^2.6.2",
+    "tslib": "^2.8.1",
     "typescript": "^5.4.5"
   },
   "dependencies": {

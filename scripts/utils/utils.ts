@@ -1,11 +1,19 @@
-import {  MarkdownView, PluginManifest, TextFileView } from 'obsidian';
+/// <reference types="@types/node" />
+import { MarkdownView, PluginManifest, TextFileView, Notice, Platform, App, Plugin } from 'obsidian';
 import { Path } from './path';
 import { ExportLog } from '../html-generation/render-log';
 import { Downloadable } from './downloadable';
-import { Settings, SettingsPage } from 'scripts/settings/settings';
+import { Settings, SettingsPage } from '../settings/settings';
+import HTMLExportPlugin from '../main';
 
-/* @ts-ignore */
-const dialog: Electron.Dialog = require('electron').remote.dialog;
+declare module 'obsidian' {
+	interface App {
+		plugins: {
+			enabledPlugins: Set<string>;
+			manifests: { [key: string]: PluginManifest };
+		};
+	}
+}
 
 export class Utils
 {
@@ -84,72 +92,91 @@ export class Utils
 
 	static async showSaveDialog(defaultPath: Path, defaultFileName: string, showAllFilesOption: boolean = true): Promise<Path | undefined>
 	{
-		// get paths
-		let absoluteDefaultPath = defaultPath.directory.absolute().joinString(defaultFileName);
-		
-		// add filters
-		let filters = [{
-			name: Utils.trimStart(absoluteDefaultPath.extension, ".").toUpperCase() + " Files",
-			extensions: [Utils.trimStart(absoluteDefaultPath.extension, ".")]
-		}];
+		if (Platform.isDesktopApp) {
+			// Desktop implementation using Electron
+			/* @ts-ignore */
+			const dialog = require('electron').remote.dialog;
+			
+			let absoluteDefaultPath = defaultPath.directory.absolute().joinString(defaultFileName);
+			let filters = [{
+				name: Utils.trimStart(absoluteDefaultPath.extension, ".").toUpperCase() + " Files",
+				extensions: [Utils.trimStart(absoluteDefaultPath.extension, ".")]
+			}];
 
-		if (showAllFilesOption)
-		{
-			filters.push({
-				name: "All Files",
-				extensions: ["*"]
+			if (showAllFilesOption) {
+				filters.push({
+					name: "All Files",
+					extensions: ["*"]
+				});
+			}
+
+			let result = await dialog.showSaveDialog({
+				defaultPath: absoluteDefaultPath.asString,
+				filters: filters
 			});
+
+			if (!result.canceled && result.filePath) {
+				return new Path(result.filePath);
+			}
+		} else {
+			// Mobile implementation using Obsidian's file system
+			// On mobile, we'll use the default export path since we can't show a native file picker
+			let exportPath = defaultPath.directory.joinString(defaultFileName);
+			new Notice(`Exporting to ${exportPath.asString}`);
+			return exportPath;
 		}
-
-		// show picker
-		let picker = await dialog.showSaveDialog({
-			defaultPath: absoluteDefaultPath.asString,
-			filters: filters,
-			properties: ["showOverwriteConfirmation"]
-		})
-
-		if (picker.canceled || !picker.filePath) return;
 		
-		let pickedPath = new Path(picker.filePath);
-		Settings.exportPath = pickedPath.asString;
-		SettingsPage.saveSettings();
-		
-		return pickedPath;
+		return undefined;
 	}
 
 	static async showSelectFolderDialog(defaultPath: Path): Promise<Path | undefined>
 	{
-		if(!defaultPath.exists) defaultPath = Path.vaultPath;
+		if (Platform.isDesktopApp) {
+			// Desktop implementation using Electron
+			/* @ts-ignore */
+			const dialog = require('electron').remote.dialog;
+			
+			let result = await dialog.showOpenDialog({
+				defaultPath: defaultPath.asString,
+				properties: ['openDirectory']
+			});
 
-		// show picker
-		let picker = await dialog.showOpenDialog({
-			defaultPath: defaultPath.directory.asString,
-			properties: ["openDirectory"]
-		});
+			if (!result.canceled && result.filePaths.length > 0) {
+				return new Path(result.filePaths[0]);
+			}
+		} else {
+			// Mobile implementation
+			// On mobile, we'll use the default path since we can't show a native folder picker
+			new Notice(`Using default folder: ${defaultPath.asString}`);
+			return defaultPath;
+		}
 
-		if (picker.canceled) return;
-
-		let path = new Path(picker.filePaths[0]);
-		Settings.exportPath = path.directory.asString;
-		SettingsPage.saveSettings();
-
-		return path;
+		return undefined;
 	}
 
 	static async showSelectFileDialog(defaultPath: Path): Promise<Path | undefined>
 	{
-		if(!defaultPath.exists) defaultPath = Path.vaultPath;
+		if (Platform.isDesktopApp) {
+			// Desktop implementation using Electron
+			/* @ts-ignore */
+			const dialog = require('electron').remote.dialog;
+			
+			let result = await dialog.showOpenDialog({
+				defaultPath: defaultPath.asString,
+				properties: ['openFile']
+			});
 
-		// show picker
-		let picker = await dialog.showOpenDialog({
-			defaultPath: defaultPath.directory.asString,
-			properties: ["openFile"]
-		});
+			if (!result.canceled && result.filePaths.length > 0) {
+				return new Path(result.filePaths[0]);
+			}
+		} else {
+			// Mobile implementation
+			// On mobile, we'll use the default path since we can't show a native file picker
+			new Notice(`Using default file: ${defaultPath.asString}`);
+			return defaultPath;
+		}
 
-		if (picker.canceled) return;
-
-		let path = new Path(picker.filePaths[0]);
-		return path;
+		return undefined;
 	}
 
 	static idealDefaultPath() : Path
@@ -166,23 +193,26 @@ export class Utils
 
 	static async downloadFiles(files: Downloadable[], rootPath: Path)
 	{
-		if (!rootPath.isAbsolute) throw new Error("folderPath must be absolute: " + rootPath.asString);
-
-		ExportLog.progress(0, files.length, "Saving HTML files to disk", "...", "var(--color-green)");
-		
 		for (let i = 0; i < files.length; i++)
 		{
 			let file = files[i];
-
-			try
-			{
-				await file.download(rootPath.directory);
-				ExportLog.progress(i+1, files.length, "Saving HTML files to disk", "Saving: " + file.filename, "var(--color-green)");
-			}
-			catch (e)
-			{
-				ExportLog.error(e.stack, "Could not save file: " + file.filename);
-				continue;
+			ExportLog.progress(i, files.length, "Downloading Files", "Downloading: " + file.relativePath.asString);
+			
+			try {
+				const plugin = HTMLExportPlugin.plugin as Plugin;
+				// Create the directory if it doesn't exist
+				const dirPath = rootPath.joinString(file.relativeDirectory.asString).asString;
+				await plugin.app.vault.adapter.mkdir(dirPath);
+				
+				// Write the file using Obsidian's adapter
+				const filePath = rootPath.joinString(file.relativePath.asString).asString;
+				await plugin.app.vault.adapter.write(
+					filePath,
+					typeof file.content === 'string' ? file.content : file.content.toString(file.encoding)
+				);
+			} catch (error) {
+				ExportLog.error(`Failed to write file ${file.relativePath.asString}: ${error}`);
+				new Notice(`Failed to write file ${file.relativePath.asString}`);
 			}
 		}
 	}
@@ -211,36 +241,19 @@ export class Utils
 
 	static getPluginIDs(): string[]
 	{
-		/*@ts-ignore*/
-		let pluginsArray: string[] = Array.from(app.plugins.enabledPlugins.values()) as string[];
-		for (let i = 0; i < pluginsArray.length; i++)
-		{
-			/*@ts-ignore*/
-			if (app.plugins.manifests[pluginsArray[i]] == undefined)
-			{
-				pluginsArray.splice(i, 1);
-				i--;
-			}
-		}
-
-		return pluginsArray;
+		const plugins = app.plugins;
+		let pluginsArray: string[] = Array.from(plugins.enabledPlugins);
+		return pluginsArray.filter(id => plugins.manifests[id] !== undefined);
 	}
 
 	static getPluginManifest(pluginID: string): PluginManifest | null
 	{
-		// @ts-ignore
 		return app.plugins.manifests[pluginID] ?? null;
 	}
 
 	static getActiveTextView(): TextFileView | null
 	{
-		let view = app.workspace.getActiveViewOfType(TextFileView);
-		if (!view)
-		{
-			return null;
-		}
-
-		return view;
+		return app.workspace.getActiveViewOfType(TextFileView);
 	}
 
 	static trimEnd(inputString: string, trimString: string): string
@@ -265,8 +278,12 @@ export class Utils
 
 	static async openPath(path: Path)
 	{
-		// @ts-ignore
-		await window.electron.remote.shell.openPath(path.asString);
+		if (Platform.isDesktopApp) {
+			/* @ts-ignore */
+			require('electron').shell.openPath(path.asString);
+		} else {
+			new Notice(`File exported to ${path.asString}`);
+		}
 	}
 
 	static levenshteinDistance(string1: string, string2: string): number
